@@ -1,0 +1,140 @@
+<?php
+
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+header('Content-Type: application/json');
+
+// DATABASE
+$host = "localhost";
+$db   = "medical_kiosk";
+$user = "kiosk";
+$pass = "1234"; // leave blank if using sudo mysql setup
+
+try {
+
+    $pdo = new PDO(
+        "mysql:host=$host;dbname=$db;charset=utf8",
+        $user,
+        $pass,
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8"
+        ]
+    );
+
+} catch(PDOException $e){
+
+    echo json_encode([
+        "success" => false,
+        "error" => $e->getMessage()
+    ]);
+
+    exit;
+}
+
+// GET JSON DATA
+$data = json_decode(file_get_contents("php://input"), true);
+
+if(!$data){
+
+    echo json_encode([
+        "success" => false,
+        "error" => "No JSON data received"
+    ]);
+
+    exit;
+}
+
+// VALUES
+$first_name    = trim($data["first_name"] ?? "");
+$last_name     = trim($data["last_name"] ?? "");
+$date_of_birth = $data["date_of_birth"] ?? "";
+$age           = intval($data["age"] ?? 0);
+$gender        = $data["gender"] ?? "";
+$phone         = $data["phone"] ?? "";
+$barangay      = $data["barangay"] ?? "";
+$municipality  = "Pozorrubio";
+$province      = "Pangasinan";
+$face_image    = $data["face_image"] ?? null;
+
+// VALIDATION
+if(
+    empty($first_name) ||
+    empty($last_name) ||
+    empty($date_of_birth) ||
+    empty($gender) ||
+    empty($phone) ||
+    empty($barangay)
+){
+
+    echo json_encode([
+        "success" => false,
+        "error" => "Missing required fields"
+    ]);
+
+    exit;
+}
+
+try {
+
+    // INSERT PATIENT
+    $stmt = $pdo->prepare("
+        INSERT INTO patients (
+            first_name,
+            last_name,
+            date_of_birth,
+            age,
+            gender,
+            phone,
+            barangay,
+            municipality,
+            province,
+            face_image
+        ) VALUES (
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        )
+    ");
+
+    $stmt->execute([
+        $first_name,
+        $last_name,
+        $date_of_birth,
+        $age,
+        $gender,
+        $phone,
+        $barangay,
+        $municipality,
+        $province,
+        $face_image
+    ]);
+
+    $patient_id = $pdo->lastInsertId();
+
+    // CREATE HEALTH RECORD
+    $stmt2 = $pdo->prepare("
+        INSERT INTO health_records (
+            patient_id
+        ) VALUES (?)
+    ");
+
+    $stmt2->execute([$patient_id]);
+
+    $record_id = $pdo->lastInsertId();
+
+    // SUCCESS
+    echo json_encode([
+        "success"   => true,
+        "patient_id"=> $patient_id,
+        "record_id" => $record_id
+    ]);
+
+} catch(PDOException $e){
+
+    echo json_encode([
+        "success" => false,
+        "error" => $e->getMessage()
+    ]);
+
+}
+?>
